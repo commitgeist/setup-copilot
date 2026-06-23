@@ -322,6 +322,33 @@ if [[ -f "${TEMPLATES_DIR}/docs/adr/README.md" ]]; then
 fi
 ok "docs/adr/ criado"
 
+# References — configs reais como base de conhecimento
+REFS_DIR=".github/references"
+mkdir -p "$REFS_DIR"
+cp "${TEMPLATES_DIR}/references/README.md" "$REFS_DIR/README.md"
+
+case "$PROFILE" in
+  devops)
+    mkdir -p "$REFS_DIR/pipeline" "$REFS_DIR/scripts"
+    [[ "${USE_K8S:-}" == "Sim" ]] && mkdir -p "$REFS_DIR/k8s-manifests"
+    ;;
+  appdev)
+    mkdir -p "$REFS_DIR/api" "$REFS_DIR/tests"
+    [[ "${USE_DOCKER:-}" == "Sim" ]] && mkdir -p "$REFS_DIR/docker"
+    [[ -n "${FRONTEND:-}" && "${FRONTEND}" != "Nenhum" ]] && mkdir -p "$REFS_DIR/frontend"
+    ;;
+  tooling)
+    mkdir -p "$REFS_DIR/cli" "$REFS_DIR/tests"
+    [[ "${USE_DOCKER:-}" == "Sim" ]] && mkdir -p "$REFS_DIR/docker"
+    ;;
+  custom)
+    mkdir -p "$REFS_DIR/pipeline" "$REFS_DIR/scripts" "$REFS_DIR/tests"
+    ;;
+esac
+
+find "$REFS_DIR" -type d -empty -exec touch {}/.gitkeep \;
+ok "references/ criado — cole seus arquivos reais aqui"
+
 # ── Step 7: Gerar copilot-instructions.md ────────────────────────────────────
 info "Step 7/8 — Gerando copilot-instructions.md"
 INSTRUCTIONS_FILE=".github/copilot-instructions.md"
