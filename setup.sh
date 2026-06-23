@@ -79,7 +79,7 @@ fi
 ask() {
   local var="$1" prompt="$2" default="${3:-}"
   if [[ "$NONINTERACTIVE" == true ]]; then
-    [[ -z "${!var:-}" ]] && declare -g "$var"="$default"
+    if [[ -z "${!var:-}" ]]; then declare -g "$var"="$default"; fi
     return
   fi
   local input
@@ -96,7 +96,7 @@ pick() {
   local var="$1" prompt="$2" options_csv="$3"
   IFS=',' read -ra options <<< "$options_csv"
   if [[ "$NONINTERACTIVE" == true ]]; then
-    [[ -z "${!var:-}" ]] && declare -g "$var"="${options[0]}"
+    if [[ -z "${!var:-}" ]]; then declare -g "$var"="${options[0]}"; fi
     return
   fi
   echo -e "\n${CYAN}?${NC} ${prompt}" >&2
@@ -189,7 +189,7 @@ pick PROFILE "Qual o seu perfil de trabalho?" "devops,appdev,tooling,custom"
 info "Step 2/8 — Stack"
 
 declare -a CLOUDS_ARR=() LANGUAGES_ARR=() DBS_ARR=()
-CICD="" IAC="" USE_K8S="" FRONTEND="" BACKEND_FRAMEWORK="" USE_DOCKER="" VCS=""
+CICD="${CICD:-}" IAC="${IAC:-}" USE_K8S="${USE_K8S:-}" FRONTEND="${FRONTEND:-}" BACKEND_FRAMEWORK="${BACKEND_FRAMEWORK:-}" USE_DOCKER="${USE_DOCKER:-}" VCS="${VCS:-}"
 
 case "$PROFILE" in
   devops)
