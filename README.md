@@ -4,7 +4,7 @@
 
 Setup padronizado do GitHub Copilot CLI para times de desenvolvimento.
 Um comando instala: agentes com guardrails, skills com templates,
-copilot-instructions.md e ADR workflow — tudo adaptado à sua stack.
+AGENTS.md, copilot-instructions.md e ADR workflow — tudo adaptado à sua stack.
 
 ## Qual setup usar?
 
@@ -14,7 +14,7 @@ copilot-instructions.md e ADR workflow — tudo adaptado à sua stack.
 | **Persona** | DevOps/SRE | Dev apps | Dev ferramentas | Multi-perfil | **Multi-perfil** |
 | **Modelo** | Multi-provider | Multi-provider | Multi-provider | Gemini (Google) | **GPT-4o / Claude (GitHub)** |
 | **Autenticação** | API Key por provider | API Key | API Key | API Key / OAuth / Vertex | **GitHub login** |
-| **Config gerada** | opencode.json | opencode.json | opencode.json | settings.json + GEMINI.md | **copilot-instructions.md** |
+| **Config gerada** | opencode.json | opencode.json | opencode.json | settings.json + GEMINI.md | **AGENTS.md + copilot-instructions.md** |
 | **Perfis** | fixo (DevOps) | fixo (Dev) | fixo (Tooling) | devops, appdev, tooling, custom | **devops, appdev, tooling, custom** |
 
 ---
@@ -52,9 +52,9 @@ Conceitos-chave:
 #    - Copilot Pro/Business/Enterprise: acesso completo
 
 # 2. Instalar o Copilot CLI
-npm install -g @githubnext/github-copilot-cli
-# ou via GitHub CLI:
-gh extension install github/gh-copilot
+npm install -g @github/copilot
+# requer Node.js 22+
+# ou: brew install --cask copilot-cli
 
 # 3. Dependências do setup
 jq --version    # apt install jq / brew install jq
@@ -74,7 +74,8 @@ cd setup-copilot
 ```
 
 O wizard de 8 passos pergunta seu perfil, stack e agentes — gera tudo
-personalizado. Em ~1 minuto você tem agentes, skills, copilot-instructions.md
+personalizado. Em ~1 minuto você tem agentes, skills, AGENTS.md,
+copilot-instructions.md
 e ADR workflow prontos.
 
 > Modo não-interativo (padronizar time / CI):
@@ -84,14 +85,16 @@ e ADR workflow prontos.
 
 ```
 setup-copilot/setup.sh  ──▶  seu-repo/
-                               ├── .github/
-                               │   ├── copilot-instructions.md  (instruções do projeto)
-                               │   ├── agents/                  (agentes com guardrails)
-                               │   └── skills/                  (terraform, k8s, etc)
-                               └── docs/adr/                    (seus ADRs vão aqui)
+                           ├── AGENTS.md                       (instruções raiz)
+                           ├── .github/
+                           │   ├── copilot-instructions.md      (instruções do projeto)
+                           │   ├── agents/                     (agentes com guardrails)
+                           │   └── skills/                     (terraform, k8s, etc)
+                           └── docs/adr/                       (seus ADRs vão aqui)
 ```
 
-O Copilot CLI carrega `.github/copilot-instructions.md` automaticamente via `/init`.
+O Copilot CLI carrega `AGENTS.md`, `.github/copilot-instructions.md` e
+arquivos em `.github/instructions/**/*.instructions.md` automaticamente via `/init`.
 Os agentes e skills ficam acessíveis como contexto nas conversas.
 
 ### 3. Primeiro uso (pós-setup)
@@ -99,9 +102,6 @@ Os agentes e skills ficam acessíveis como contexto nas conversas.
 ```bash
 # Entrar no Copilot CLI
 copilot
-
-# Ou via GitHub CLI
-gh copilot
 ```
 
 No chat interativo:
@@ -119,7 +119,12 @@ No chat interativo:
 | Comando | O que faz |
 |---|---|
 | `/help` | Ajuda completa |
-| `/init` | Carrega instruções do repo (AGENTS.md, copilot-instructions.md) |
+| `/init` | Carrega instruções do repo |
+| `/skills` | Gerenciar skills instaladas |
+| `/mcp` | Gerenciar MCP servers |
+| `/subagents` | Configurar modelos de subagents |
+| `/plan` | Criar um plano antes de codar |
+| `/research` | Rodar pesquisa profunda com GitHub search e web |
 | `/settings` | Ver/configurar ajustes |
 | `/login` / `/logout` | Autenticação GitHub |
 | `ctrl+s` | Stash/pop prompt atual |
@@ -216,7 +221,7 @@ git clone https://github.com/commitgeist/setup-copilot.git /tmp/setup-copilot
 #     Banco?  → Nenhum
 #     Agents? → architect, devops-engineer, reviewer
 #
-#   Resultado: .github/ (copilot-instructions.md, agents/, skills/),
+#   Resultado: AGENTS.md, .github/ (copilot-instructions.md, agents/, skills/),
 #   docs/adr/
 
 # ── 3. Abrir o Copilot CLI ──
@@ -527,7 +532,7 @@ Dentro do Copilot CLI, esses prompts cobrem 80% do trabalho real:
 |---|---|---|---|
 | Motor | OpenCode CLI | Gemini CLI | GitHub Copilot CLI |
 | Setup wizard | ✅ `setup.sh` 12+ steps | ✅ `setup.sh` 12 steps | ✅ `setup.sh` 8 steps |
-| Config gerada | `opencode.json` + `AGENTS.md` | `settings.json` + `GEMINI.md` | `copilot-instructions.md` |
+| Config gerada | `opencode.json` + `AGENTS.md` | `settings.json` + `GEMINI.md` | `AGENTS.md` + `copilot-instructions.md` |
 | Modelos | Multi-provider (Anthropic, OpenAI, Ollama) | Gemini (Google) | GPT-4o, Claude (via GitHub) |
 | MCPs | Configuráveis via JSON | Configuráveis via JSON | Integrados (GitHub nativo) |
 | PR automation | Manual | Manual | `/delegate` (branch + PR automático) |
@@ -552,6 +557,31 @@ Isso cria automaticamente:
 
 É o único setup onde o agente pode **abrir PR sozinho** — os outros
 precisam que você faça isso manualmente.
+
+---
+
+## Sessões & aliases
+
+Contexto longo demais deixa o modelo mais lento, mais caro e mais propenso a se
+perder. Troque de conversa ao mudar de tarefa.
+
+| Situação | O que fazer |
+|---|---|
+| Assunto novo | `/clear` (aliases `/new`, `/reset`) começa uma conversa nova |
+| Mesma tarefa, contexto grande | `/compact [foco]` resume o histórico |
+| Ver uso do contexto / tokens | `/context` (e `/usage` para métricas) |
+| Retomar uma sessão | `/resume` ou `/continue`; no shell, `copilot --continue` |
+| Desfazer o último turno | `/undo` (alias `/rewind`) |
+
+Regra prática: assunto novo = `/clear`; mesma tarefa ficando longa = `/compact`.
+
+**Aliases:** crie **commands** (`/nome`) em `.claude/commands/*.md` — viram
+`/seu-comando` no CLI. No shell:
+
+```bash
+alias cop='copilot'
+alias copc='copilot --continue'   # retoma a última sessão deste diretório
+```
 
 ---
 

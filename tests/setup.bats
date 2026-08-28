@@ -24,14 +24,29 @@ run_setup() {
 @test "gera copilot-instructions.md" {
   run_setup
   [ -f .github/copilot-instructions.md ]
+  [ -f AGENTS.md ]
+}
+
+@test "agents têm frontmatter de custom agent (description obrigatório, tools allowlist)" {
+  run_setup
+  for f in .github/agents/*.agent.md; do
+    head -1 "$f" | grep -q '^---$'
+    grep -q "^description:" "$f"
+    grep -q "^tools:" "$f"
+  done
+  # guardrails tool-level: architect sem shell, reviewer sem edit
+  ! grep -q '"execute"' .github/agents/architect.agent.md
+  ! grep -q '"edit"' .github/agents/reviewer.agent.md
+  grep -q '"execute"' .github/agents/reviewer.agent.md
 }
 
 @test "agents instalados sem placeholder {{MODEL}}" {
   run_setup
-  [ -f .github/agents/architect.md ]
-  [ -f .github/agents/devops-engineer.md ]
-  [ -f .github/agents/reviewer.md ]
+  [ -f .github/agents/architect.agent.md ]
+  [ -f .github/agents/devops-engineer.agent.md ]
+  [ -f .github/agents/reviewer.agent.md ]
   ! grep -rq "{{MODEL}}" .github/agents/
+  ! grep -q "{{MODEL}}" AGENTS.md
 }
 
 @test "skills condicionais pela stack" {

@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # setup-copilot — Wizard de setup do GitHub Copilot CLI
-# Versão: 1.0.0
+# Versão: 1.1.0
 # Uso:  bash setup.sh [--answers FILE] [-h|--help]
 set -euo pipefail
 
-VERSION="1.0.0"
+VERSION="1.1.0"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TEMPLATES_DIR="${SCRIPT_DIR}/templates"
 
@@ -50,8 +50,9 @@ ${BOLD}Opções:${NC}
   -h, --help       Mostra esta ajuda
 
 ${BOLD}O que é gerado:${NC}
+  AGENTS.md                       Instruções raiz do repo
   .github/copilot-instructions.md  Instruções do projeto
-  .github/agents/*.md              Agentes com guardrails
+  .github/agents/*.agent.md        Custom agents com tools allowlist
   .github/skills/*.md              Skills por área
   docs/adr/                        Diretório para ADRs
 EOF
@@ -159,7 +160,8 @@ has() { local needle="$1"; shift; for item in "$@"; do [[ "$item" == "$needle" ]
 backup_if_exists() {
   local f="$1"
   if [[ -e "$f" ]]; then
-    local bak="${f}.bak.$(date +%Y%m%d%H%M%S)"
+    local bak
+    bak="${f}.bak.$(date +%Y%m%d%H%M%S)"
     cp -a "$f" "$bak"
     warn "Backup: ${f} → ${bak}"
   fi
@@ -171,6 +173,112 @@ install_template() {
   mkdir -p "$dest_dir"
   backup_if_exists "$dest"
   cp -a "$src" "$dest"
+}
+
+write_instructions() {
+  local dest="$1"
+  backup_if_exists "$dest"
+
+  {
+    echo "# Instruções do Projeto — GitHub Copilot"
+    echo ""
+    echo "> Gerado por setup-copilot v${VERSION} em $(date -Iseconds)"
+    echo "> Carregado automaticamente pelo Copilot CLI via \`/init\`"
+    echo ""
+    echo "> O Copilot também respeita \`AGENTS.md\`, \`.github/copilot-instructions.md\` e arquivos em \`.github/instructions/**/*.instructions.md\`."
+    echo ""
+
+    # Agents
+    echo "## Agents Disponíveis"
+    echo ""
+    echo "Custom agents em \`.github/agents/*.agent.md\`. Invocação: \`copilot --agent NOME\`,"
+    echo "\`/agent\` no CLI, ou automática — o modelo delega quando a description do agente"
+    echo "casa com a tarefa. O campo \`tools\` do frontmatter é o guardrail real (allowlist)."
+    echo ""
+    for agent in "${AGENTS_ARR[@]}"; do
+      case "$agent" in
+        architect)        echo "- **@architect** — Planeja e projeta soluções. Nunca implementa diretamente." ;;
+        developer)        echo "- **@developer** — Implementa features, APIs e serviços." ;;
+        devops-engineer)  echo "- **@devops-engineer** — Gerencia infra, CI/CD e deploys." ;;
+        reviewer)         echo "- **@reviewer** — Revisa código (read-only). Roda linters e testes." ;;
+        tester)           echo "- **@tester** — Escreve apenas arquivos de teste." ;;
+      esac
+    done
+    echo ""
+
+    # Stack
+    echo "## Stack"
+    echo ""
+    echo "- **Perfil**: ${PROFILE}"
+    [[ -n "${CLOUDS:-}" ]]             && echo "- **Clouds**: ${CLOUDS}"
+    [[ -n "${LANGUAGES:-}" ]]          && echo "- **Linguagens**: ${LANGUAGES}"
+    [[ -n "${BACKEND_FRAMEWORK:-}" && "${BACKEND_FRAMEWORK}" != "Nenhum" ]] && echo "- **Framework**: ${BACKEND_FRAMEWORK}"
+    [[ -n "${FRONTEND:-}" && "${FRONTEND}" != "Nenhum" ]]                   && echo "- **Frontend**: ${FRONTEND}"
+    [[ -n "${IAC:-}" && "${IAC}" != "Nenhum" ]]     && echo "- **IaC**: ${IAC}"
+    [[ -n "${USE_K8S:-}" ]]            && echo "- **Kubernetes**: ${USE_K8S}"
+    [[ -n "${CICD:-}" && "${CICD}" != "Nenhum" ]]   && echo "- **CI/CD**: ${CICD}"
+    [[ -n "${DBS:-}" ]]                && echo "- **Bancos**: ${DBS}"
+    [[ -n "${USE_DOCKER:-}" ]]         && echo "- **Docker**: ${USE_DOCKER}"
+    echo ""
+
+    # Skills
+    echo "## Skills Instaladas"
+    echo ""
+    echo "Skills ficam em \`.github/skills/\` — cada uma é um pacote de instruções"
+    echo "que dá contexto especializado ao agente para uma área específica."
+    echo ""
+    for skill in "${INSTALLED_SKILLS[@]}"; do
+      echo "- \`${skill}\` → .github/skills/${skill}/"
+    done
+    echo ""
+
+    # Regras
+    echo "## Regras do Projeto"
+    echo ""
+    echo "1. **ADR antes de implementar** — Mudanças complexas passam pelo architect primeiro"
+    echo "2. **Código = Teste** — Toda feature deve ter testes correspondentes"
+    echo "3. **Valide antes de commitar** — Rode linters/testes antes de abrir PR"
+    echo "4. **Secrets** — NUNCA hardcode. Use variáveis de ambiente ou secret managers"
+    echo "5. **Conventional Commits** — feat:, fix:, docs:, chore:, refactor:, test:, ci:"
+    echo "6. **PRs pequenos** — Máximo ~300 linhas. Mudanças grandes passam pelo architect primeiro"
+    echo "7. **Não afirme estado sem verificar** — Sempre confirme com ferramentas antes de afirmar"
+    echo "8. **Não invente flags/opções de CLI** — Consulte --help ou documentação"
+    echo ""
+
+    # Workflow
+    echo "## Workflow"
+    echo ""
+    echo "### Mudança complexa"
+    echo "1. architect → ADR em docs/adr/ → aprovação humana → developer/devops-engineer → reviewer → PR"
+    echo ""
+    echo "### Mudança simples"
+    echo "1. developer (com plano) → reviewer → PR"
+    echo ""
+    echo "### Troubleshooting"
+    echo "1. Diagnóstico → propõe fix → tester valida → PR"
+    echo ""
+
+    # Permissões
+    echo "## Permissões dos Agents"
+    echo ""
+    echo "O que é enforçado pela ferramenta (frontmatter \`tools\`) vs. por instrução:"
+    echo ""
+    echo "| Agent | tools (enforçado) | Por instrução (prompt) |"
+    echo "|---|---|---|"
+    for agent in "${AGENTS_ARR[@]}"; do
+      case "$agent" in
+        architect)        echo "| architect | read, search, edit, todo — **sem execute** | escrita só em docs/adr/ e docs/design/ |" ;;
+        developer)        echo "| developer | read, search, edit, execute, todo | sem comandos destrutivos |" ;;
+        devops-engineer)  echo "| devops-engineer | read, search, edit, execute, todo | apply exige aprovação humana; deny destrutivos |" ;;
+        reviewer)         echo "| reviewer | read, search, execute — **sem edit** | execute limitado à whitelist de validadores |" ;;
+        tester)           echo "| tester | read, search, edit, execute | edita apenas arquivos de teste |" ;;
+      esac
+    done
+    echo ""
+    echo "> O Copilot não suporta permissão por path/comando no agente — restrições"
+    echo "> desse tipo acima são por instrução e devem ser conferidas no review."
+    echo ""
+  } > "$dest"
 }
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -258,7 +366,7 @@ mkdir -p "$AGENTS_DIR"
 for agent in "${AGENTS_ARR[@]}"; do
   local_tpl="${TEMPLATES_DIR}/agents/${agent}.md.tpl"
   if [[ -f "$local_tpl" ]]; then
-    dest="${AGENTS_DIR}/${agent}.md"
+    dest="${AGENTS_DIR}/${agent}.agent.md"   # extensão canônica de custom agent do Copilot
     install_template "$local_tpl" "$dest"
     ok "Agent: ${agent}"
   else
@@ -325,7 +433,7 @@ ok "docs/adr/ criado"
 # References — configs reais como base de conhecimento
 REFS_DIR=".github/references"
 mkdir -p "$REFS_DIR"
-cp "${TEMPLATES_DIR}/references/README.md" "$REFS_DIR/README.md"
+install_template "${TEMPLATES_DIR}/references/README.md" "$REFS_DIR/README.md"
 
 case "$PROFILE" in
   devops)
@@ -353,100 +461,11 @@ ok "references/ criado — cole seus arquivos reais aqui"
 info "Step 7/8 — Gerando copilot-instructions.md"
 INSTRUCTIONS_FILE=".github/copilot-instructions.md"
 mkdir -p .github
-backup_if_exists "$INSTRUCTIONS_FILE"
-
-{
-  echo "# Instruções do Projeto — GitHub Copilot"
-  echo ""
-  echo "> Gerado por setup-copilot v${VERSION} em $(date -Iseconds)"
-  echo "> Carregado automaticamente pelo Copilot CLI via \`/init\`"
-  echo ""
-
-  # Agents
-  echo "## Agents Disponíveis"
-  echo ""
-  for agent in "${AGENTS_ARR[@]}"; do
-    case "$agent" in
-      architect)        echo "- **@architect** — Planeja e projeta soluções. Nunca implementa diretamente." ;;
-      developer)        echo "- **@developer** — Implementa features, APIs e serviços." ;;
-      devops-engineer)  echo "- **@devops-engineer** — Gerencia infra, CI/CD e deploys." ;;
-      reviewer)         echo "- **@reviewer** — Revisa código (read-only). Roda linters e testes." ;;
-      tester)           echo "- **@tester** — Escreve apenas arquivos de teste." ;;
-    esac
-  done
-  echo ""
-
-  # Stack
-  echo "## Stack"
-  echo ""
-  echo "- **Perfil**: ${PROFILE}"
-  [[ -n "${CLOUDS:-}" ]]             && echo "- **Clouds**: ${CLOUDS}"
-  [[ -n "${LANGUAGES:-}" ]]          && echo "- **Linguagens**: ${LANGUAGES}"
-  [[ -n "${BACKEND_FRAMEWORK:-}" && "${BACKEND_FRAMEWORK}" != "Nenhum" ]] && echo "- **Framework**: ${BACKEND_FRAMEWORK}"
-  [[ -n "${FRONTEND:-}" && "${FRONTEND}" != "Nenhum" ]]                   && echo "- **Frontend**: ${FRONTEND}"
-  [[ -n "${IAC:-}" && "${IAC}" != "Nenhum" ]]     && echo "- **IaC**: ${IAC}"
-  [[ -n "${USE_K8S:-}" ]]            && echo "- **Kubernetes**: ${USE_K8S}"
-  [[ -n "${CICD:-}" && "${CICD}" != "Nenhum" ]]   && echo "- **CI/CD**: ${CICD}"
-  [[ -n "${DBS:-}" ]]                && echo "- **Bancos**: ${DBS}"
-  [[ -n "${USE_DOCKER:-}" ]]         && echo "- **Docker**: ${USE_DOCKER}"
-  echo ""
-
-  # Skills
-  echo "## Skills Instaladas"
-  echo ""
-  echo "Skills ficam em \`.github/skills/\` — cada uma é um pacote de instruções"
-  echo "que dá contexto especializado ao agente para uma área específica."
-  echo ""
-  for skill in "${INSTALLED_SKILLS[@]}"; do
-    echo "- \`${skill}\` → .github/skills/${skill}/"
-  done
-  echo ""
-
-  # Regras
-  echo "## Regras do Projeto"
-  echo ""
-  echo "1. **ADR antes de implementar** — Mudanças complexas passam pelo architect primeiro"
-  echo "2. **Código = Teste** — Toda feature deve ter testes correspondentes"
-  echo "3. **Valide antes de commitar** — Rode linters/testes antes de abrir PR"
-  echo "4. **Secrets** — NUNCA hardcode. Use variáveis de ambiente ou secret managers"
-  echo "5. **Conventional Commits** — feat:, fix:, docs:, chore:, refactor:, test:, ci:"
-  echo "6. **PRs pequenos** — Máximo ~300 linhas. Mudanças grandes passam pelo architect primeiro"
-  echo "7. **Não afirme estado sem verificar** — Sempre confirme com ferramentas antes de afirmar"
-  echo "8. **Não invente flags/opções de CLI** — Consulte --help ou documentação"
-  echo ""
-
-  # Workflow
-  echo "## Workflow"
-  echo ""
-  echo "### Mudança complexa"
-  echo "1. architect → ADR em docs/adr/ → aprovação humana → developer/devops-engineer → reviewer → PR"
-  echo ""
-  echo "### Mudança simples"
-  echo "1. developer (com plano) → reviewer → PR"
-  echo ""
-  echo "### Troubleshooting"
-  echo "1. Diagnóstico → propõe fix → tester valida → PR"
-  echo ""
-
-  # Permissões
-  echo "## Permissões dos Agents"
-  echo ""
-  echo "| Agent | Escrever arquivos | Executar comandos | Destruir recursos |"
-  echo "|---|---|---|---|"
-  for agent in "${AGENTS_ARR[@]}"; do
-    case "$agent" in
-      architect)        echo "| architect | Só docs/adr/, docs/design/ | ❌ Bloqueado | ❌ |" ;;
-      developer)        echo "| developer | ✅ Tudo | ✅ | ❌ deny destrutivos |" ;;
-      devops-engineer)  echo "| devops-engineer | ✅ Tudo | ✅ (apply=ask) | ❌ deny |" ;;
-      reviewer)         echo "| reviewer | ❌ Bloqueado | 🔍 Só leitura | ❌ |" ;;
-      tester)           echo "| tester | Só arquivos de teste | ✅ (testes) | ❌ |" ;;
-    esac
-  done
-  echo ""
-
-} > "$INSTRUCTIONS_FILE"
+write_instructions "$INSTRUCTIONS_FILE"
+write_instructions "AGENTS.md"
 
 ok "copilot-instructions.md gerado"
+ok "AGENTS.md gerado"
 
 # ── Step 8: Resumo ───────────────────────────────────────────────────────────
 info "Step 8/8 — Resumo"
@@ -457,9 +476,9 @@ echo -e "${BOLD}║   ✅ Setup concluído com sucesso!            ║${NC}" >&2
 echo -e "${BOLD}╚══════════════════════════════════════════════╝${NC}" >&2
 echo "" >&2
 echo -e "  ${BOLD}Perfil:${NC}       ${PROFILE}" >&2
-echo -e "  ${BOLD}Agents:${NC}       ${AGENTS}" >&2
+echo -e "  ${BOLD}Agents:${NC}       $(IFS=','; echo "${AGENTS_ARR[*]}")" >&2
 echo -e "  ${BOLD}Skills:${NC}       $(IFS=','; echo "${INSTALLED_SKILLS[*]}")" >&2
-echo -e "  ${BOLD}Instruções:${NC}   ${INSTRUCTIONS_FILE}" >&2
+echo -e "  ${BOLD}Instruções:${NC}   AGENTS.md, ${INSTRUCTIONS_FILE}" >&2
 echo -e "  ${BOLD}Agents dir:${NC}   ${AGENTS_DIR}/" >&2
 echo -e "  ${BOLD}Skills dir:${NC}   ${SKILLS_DIR}/" >&2
 echo "" >&2
